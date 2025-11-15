@@ -61,7 +61,10 @@ jobs:
       - name: Run pytest
         run: |
           echo "Running pytest..."
-          pytest -q
+          python -m pytest -q
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+
 
       # Step 7: Build Docker image (for verification only; no push)
       - name: Build Docker image (local)
