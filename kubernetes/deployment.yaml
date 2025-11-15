@@ -1,12 +1,31 @@
+# kubernetes/deployment.yaml
+# Deployment for the Flask app with:
+# - RollingUpdate strategy (maxSurge / maxUnavailable)
+# - Multiple replicas
+# - Resource requests & limits
+# - Liveness and readiness probes
+# - Proper labels and selector
+#
+# IMPORTANT:
+# - Image name below is `flask-k8s-app:latest`. If using minikube's Docker daemon,
+#   build the image inside minikube or use `minikube image load`.
+# - Adjust CPU/memory values if your minikube host is small.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: flask-app
+  name: flask-deployment
+  labels:
+    app: flask-app
 spec:
-  replicas: 2
+  # Desired number of replicas for scaling demonstration
+  replicas: 3
+
+  # Selector to match template labels
   selector:
     matchLabels:
       app: flask-app
+
   template:
     metadata:
       labels:
@@ -14,7 +33,48 @@ spec:
     spec:
       containers:
         - name: flask-container
-          image: docker.io/library/flask-k8s-app:latest
-          imagePullPolicy: Never
+          # Use the image you build for CI or locally; ensure minikube can access it
+          image: flask-k8s-app:latest
+          imagePullPolicy: IfNotPresent
+
           ports:
             - containerPort: 5000
+
+          # Resource requests & limits to demonstrate scheduling and QoS
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+
+          # Readiness probe ensures traffic only goes to ready pods
+          readinessProbe:
+            httpGet:
+              path: "/"
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            successThreshold: 1
+            failureThreshold: 3
+
+          # Liveness probe restarts container if it becomes unhealthy
+          livenessProbe:
+            httpGet:
+              path: "/"
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+  # Rolling update strategy for zero-downtime deployments
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxSurge: allow up to 1 extra pod during update
+      maxSurge: 1
+      # maxUnavailable: at most 1 pod can be unavailable during the update
+      maxUnavailable: 1
