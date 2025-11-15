@@ -1,15 +1,74 @@
+# .github/workflows/ci.yml
+# ---------------------------
+# CI workflow that:
+# - triggers on any push and on pull requests
+# - sets up Python
+# - installs dependencies from requirements.txt
+# - runs flake8 lint (enforcing max-line-length=90 via .flake8)
+# - runs pytest unit tests
+# - builds a Docker image (for verification; does NOT push)
+# ---------------------------
+
 name: CI Pipeline
 
+# Run on pushes to any branch and on PRs targeting any branch
 on:
   push:
-    branches: [ develop, feature/* ]
+    branches: ['**']    # trigger on pushes to any branch
   pull_request:
-    branches: [ main ]
+    branches: ['**']    # trigger for PRs
 
 jobs:
-  lint:
+  test-and-build:
+    # Use a linux runner with Docker available
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Run basic check
-        run: echo "CI Running successfully"
+      # Step 1: checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Python environment
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      # Step 3: Cache pip packages for speed (keyed by requirements.txt hash)
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # Step 4: Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install everything from requirements.txt (includes pytest and flake8)
+          pip install -r requirements.txt
+
+      # Step 5: Lint code with flake8 (enforces max-line-length via .flake8)
+      - name: Run flake8 lint
+        run: |
+          echo "Running flake8..."
+          # Exit non-zero on lint violations so CI fails the job
+          flake8 .
+
+      # Step 6: Run unit tests with pytest
+      - name: Run pytest
+        run: |
+          echo "Running pytest..."
+          pytest -q
+
+      # Step 7: Build Docker image (for verification only; no push)
+      - name: Build Docker image (local)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          # Tag image with the commit SHA so it's easy to trace
+          tags: flask-app:ci-${{ github.sha }}

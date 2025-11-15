@@ -1,1 +1,7 @@
+# runtime dependencies
 Flask==3.0.0
+
+# development/test dependencies
+pytest==7.4.0
+flake8==7.3.0
+
