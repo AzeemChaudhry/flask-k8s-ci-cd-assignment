@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+
+# Logs
+*.log
+
+# Tests
+htmlcov/
+.coverage
+pytestcache/
+
+# Docker
+*.env
+docker-compose.override.yml
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Others
+dist/
+build/
