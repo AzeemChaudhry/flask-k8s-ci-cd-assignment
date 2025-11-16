@@ -1,5 +1,3 @@
-// Jenkinsfile for CI/CD pipeline
-// This pipeline builds a Docker image, deploys to Kubernetes, and verifies deployment
 pipeline {
     agent any
     
@@ -10,25 +8,6 @@ pipeline {
     }
     
     stages {
-        stage('Verify Minikube') {
-            steps {
-                script {
-                    echo "Checking Minikube status..."
-                    powershell """
-                        \$status = minikube status --format='{{.Host}}' 2>&1
-                        if (\$status -notmatch 'Running') {
-                            Write-Output 'Starting Minikube...'
-                            minikube start
-                            Start-Sleep -Seconds 10
-                        } else {
-                            Write-Output 'Minikube is already running'
-                        }
-                        minikube status
-                    """
-                }
-            }
-        }
-        
         stage('Build Docker Image') {
             steps {
                 script {
@@ -103,8 +82,9 @@ pipeline {
             echo "Pipeline finished at ${new Date()}"
             powershell """
                 Write-Output 'Attempting to get application logs...'
-                \$pods = kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-k8s-app -o jsonpath='{.items[0].metadata.name}' 2>&1
-                if (\$LASTEXITCODE -eq 0 -and \$pods) {
+                \$ErrorActionPreference = 'SilentlyContinue'
+                \$pods = kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-k8s-app -o jsonpath='{.items[0].metadata.name}'
+                if (\$pods) {
                     kubectl logs \$pods -n ${KUBE_NAMESPACE} --tail=50
                 } else {
                     Write-Output 'No pods available yet'
@@ -132,16 +112,16 @@ pipeline {
                 
                 Write-Output ''
                 Write-Output 'Recent Events:'
-                kubectl get events -n ${KUBE_NAMESPACE} --sort-by=.lastTimestamp | Select-Object -Last 15
+                kubectl get events -n ${KUBE_NAMESPACE} --sort-by=.lastTimestamp 2>&1 | Select-Object -Last 15
                 
                 Write-Output ''
                 Write-Output 'All Pods:'
-                kubectl get pods -n ${KUBE_NAMESPACE} -o wide
+                kubectl get pods -n ${KUBE_NAMESPACE} -o wide 2>&1
                 
                 Write-Output ''
                 Write-Output 'Pod Details (if any):'
                 \$pods = kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-k8s-app -o jsonpath='{.items[*].metadata.name}' 2>&1
-                if (\$pods) {
+                if (\$pods -and \$pods -notmatch 'error') {
                     foreach (\$pod in \$pods.Split()) {
                         Write-Output "Describing pod: \$pod"
                         kubectl describe pod \$pod -n ${KUBE_NAMESPACE}
