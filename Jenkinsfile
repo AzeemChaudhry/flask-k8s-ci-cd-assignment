@@ -50,8 +50,8 @@ pipeline {
                         Write-Output 'Loading image ${IMAGE_NAME}:latest into Minikube...'
                         minikube image load ${IMAGE_NAME}:latest
                         
-                        Write-Output 'Verifying images are in Minikube registry...'
-                        minikube ssh 'docker images | grep flask-k8s-app'
+                        Write-Output 'Verifying images with minikube image ls...'
+                        minikube image ls | Select-String ${IMAGE_NAME}
                         
                         Write-Output 'Images loaded successfully!'
                     """
