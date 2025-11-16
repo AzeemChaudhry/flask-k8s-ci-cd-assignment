@@ -35,7 +35,7 @@ spec:
         - name: flask-container
           # Use the image you build for CI or locally; ensure minikube can access it
           image: flask-k8s-app:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Never
 
           ports:
             - containerPort: 5000
