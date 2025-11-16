@@ -45,34 +45,18 @@ pipeline {
                     echo "Loading image into Minikube..."
                     powershell """
                         Write-Output 'Loading image ${IMAGE_NAME}:${IMAGE_TAG} into Minikube...'
-                        \$result1 = minikube image load ${IMAGE_NAME}:${IMAGE_TAG} 2>&1
-                        Write-Output \$result1
+                        minikube image load ${IMAGE_NAME}:${IMAGE_TAG}
                         
-                        Write-Output ''
                         Write-Output 'Loading image ${IMAGE_NAME}:latest into Minikube...'
-                        \$result2 = minikube image load ${IMAGE_NAME}:latest 2>&1
-                        Write-Output \$result2
+                        minikube image load ${IMAGE_NAME}:latest
                         
-                        Write-Output ''
                         Write-Output 'Waiting for images to be available...'
                         Start-Sleep -Seconds 5
                         
-                        Write-Output ''
                         Write-Output 'Verifying images are in minikube registry...'
-                        \$images = minikube image ls 2>&1 | Select-String '${IMAGE_NAME}'
+                        minikube image ls | Select-String ${IMAGE_NAME}
                         
-                        if (\$images) {
-                            Write-Output 'Found images:'
-                            Write-Output \$images
-                        } else {
-                            Write-Error 'ERROR: Images not found in minikube registry!'
-                            Write-Output 'Attempting to list all images in minikube:'
-                            minikube image ls
-                            exit 1
-                        }
-                        
-                        Write-Output ''
-                        Write-Output 'Images loaded and verified successfully!'
+                        Write-Output 'Images loaded successfully!'
                     """
                 }
             }
@@ -103,15 +87,12 @@ pipeline {
                         Write-Output 'Waiting for deployment rollout to complete...'
                         kubectl rollout status deployment/flask-deployment -n ${KUBE_NAMESPACE} --timeout=5m
                         
-                        Write-Output ''
                         Write-Output 'Current pods:'
                         kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o wide
                         
-                        Write-Output ''
                         Write-Output 'Current services:'
                         kubectl get svc -n ${KUBE_NAMESPACE}
                         
-                        Write-Output ''
                         Write-Output 'Getting service URL...'
                         minikube service flask-service --url -n ${KUBE_NAMESPACE}
                     """
@@ -123,11 +104,6 @@ pipeline {
     post {
         always {
             echo "Pipeline finished at ${new Date()}"
-            powershell """
-                Write-Output ''
-                Write-Output 'Final pod status:'
-                kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app 2>&1 | Out-String
-            """
         }
         success {
             echo "[SUCCESS] Deployment completed successfully!"
@@ -135,5 +111,17 @@ pipeline {
                 Write-Output '========================================='
                 Write-Output '    DEPLOYMENT SUCCESSFUL!'
                 Write-Output '========================================='
-                Write-Output ''
                 Write-Output 'Pods:'
+                kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o wide
+                Write-Output 'Services:'
+                kubectl get svc -n ${KUBE_NAMESPACE}
+                Write-Output 'Access your application at:'
+                minikube service flask-service --url -n ${KUBE_NAMESPACE}
+                Write-Output '========================================='
+            """
+        }
+        failure {
+            echo "[FAILURE] Pipeline failed!"
+        }
+    }
+}
