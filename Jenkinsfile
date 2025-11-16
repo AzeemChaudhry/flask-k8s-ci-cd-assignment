@@ -19,34 +19,34 @@ pipeline {
             steps {
                 powershell """
                     Write-Output 'Building Docker image...'
-                    
+
                     # Configure minikube Docker env
                     & minikube -p minikube docker-env | Invoke-Expression
-                    
+
                     # Build and tag image
                     docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                     docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
-                    
+
                     # List images
                     docker images
                 """
             }
         }
-        
+
         stage('Update Kubernetes Manifests') {
             steps {
                 powershell """
                     Write-Output 'Updating Kubernetes manifests...'
-                    
+
                     (Get-Content kubernetes\\deployment.yaml) -replace 'image: ${IMAGE_NAME}:.*', 'image: ${IMAGE_NAME}:${IMAGE_TAG}' | Set-Content kubernetes\\deployment.yaml
-                    
+
                     if (-not (Select-String -Path kubernetes\\deployment.yaml -Pattern 'imagePullPolicy: Never')) {
-                        (Get-Content kubernetes\\deployment.yaml) + '        imagePullPolicy: Never' | Set-Content kubernetes\\deployment.yaml
+                        (Get-Content kubernetes\\deployment.yaml) + '        imagePullPolicy: Never' | Set-Content kubernetes\\deployment.yaml        
                     }
                 """
             }
         }
-        
+
         stage('Deploy to Kubernetes') {
             steps {
                 powershell """
@@ -56,7 +56,7 @@ pipeline {
                 """
             }
         }
-        
+
         stage('Verify Deployment') {
             steps {
                 powershell """
@@ -69,7 +69,7 @@ pipeline {
             }
         }
     }
-    
+
     post {
         always {
             echo "Pipeline finished at ${new Date()}"
