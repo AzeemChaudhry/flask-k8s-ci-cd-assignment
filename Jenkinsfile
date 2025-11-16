@@ -17,8 +17,6 @@ pipeline {
                         Write-Output "Using KUBECONFIG: ${env:KUBECONFIG}"
                         Write-Output 'Testing connection:'
                         kubectl get nodes
-                        Write-Output 'Cluster info:'
-                        kubectl cluster-info
                     """
                 }
             }
@@ -66,8 +64,7 @@ pipeline {
                         Write-Output 'Updating deployment image...'
                         kubectl set image deployment/flask-deployment flask-container=${IMAGE_NAME}:${IMAGE_TAG} -n ${KUBE_NAMESPACE}
                         
-                        Write-Output 'Setting imagePullPolicy to Never...'
-                        kubectl patch deployment flask-deployment -n ${KUBE_NAMESPACE} --type='json' -p='[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/imagePullPolicy\",\"value\":\"Never\"}]'
+                        Write-Output 'Deployment updated successfully!'
                     """
                 }
             }
@@ -103,7 +100,7 @@ pipeline {
             echo "[SUCCESS] Deployment successful!"
             powershell """
                 Write-Output '=================================='
-                Write-Output 'Final Deployment Status:'
+                Write-Output 'Deployment Summary:'
                 kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o wide
                 kubectl get svc -n ${KUBE_NAMESPACE}
                 Write-Output '=================================='
@@ -113,7 +110,7 @@ pipeline {
             """
         }
         failure {
-            echo "[FAILURE] Pipeline failed!"
+            echo "[FAILURE] Pipeline failed - check logs above"
         }
     }
 }
