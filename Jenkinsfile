@@ -5,7 +5,7 @@ pipeline {
         IMAGE_NAME = "flask-k8s-app"
         IMAGE_TAG = "${BUILD_NUMBER}"
         KUBE_NAMESPACE = "default"
-        KUBECONFIG = "C:\\Users\\Azeem\\.kube\\config"  // Add this line
+        KUBECONFIG = "C:\\Users\\Azeem\\.kube\\config"
     }
     
     stages {
@@ -15,10 +15,8 @@ pipeline {
                     echo "Verifying Kubernetes connection..."
                     powershell """
                         Write-Output "Using KUBECONFIG: ${env:KUBECONFIG}"
-                        
                         Write-Output 'Testing connection:'
                         kubectl get nodes
-                        
                         Write-Output 'Cluster info:'
                         kubectl cluster-info
                     """
@@ -66,8 +64,8 @@ pipeline {
                         kubectl apply -f kubernetes/
                         
                         Write-Output 'Updating deployment image...'
-                        kubectl set image deployment/flask-k8s-deployment flask-k8s-app=${IMAGE_NAME}:${IMAGE_TAG} -n ${KUBE_NAMESPACE}
-                        kubectl patch deployment flask-k8s-deployment -n ${KUBE_NAMESPACE} -p '{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"flask-k8s-app\",\"imagePullPolicy\":\"Never\"}]}}}}'
+                        kubectl set image deployment/flask-deployment flask-k8s-app=${IMAGE_NAME}:${IMAGE_TAG} -n ${KUBE_NAMESPACE}
+                        kubectl patch deployment flask-deployment -n ${KUBE_NAMESPACE} -p '{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"flask-k8s-app\",\"imagePullPolicy\":\"Never\"}]}}}}'
                     """
                 }
             }
@@ -79,7 +77,7 @@ pipeline {
                     echo "Checking rollout status..."
                     powershell """
                         Write-Output 'Waiting for deployment to complete...'
-                        kubectl rollout status deployment/flask-k8s-deployment -n ${KUBE_NAMESPACE} --timeout=5m
+                        kubectl rollout status deployment/flask-deployment -n ${KUBE_NAMESPACE} --timeout=5m
                         
                         Write-Output 'Current pods:'
                         kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-k8s-app -o wide
@@ -88,7 +86,7 @@ pipeline {
                         kubectl get svc -n ${KUBE_NAMESPACE}
                         
                         Write-Output 'Getting service URL...'
-                        minikube service flask-k8s-service --url -n ${KUBE_NAMESPACE}
+                        minikube service flask-service --url -n ${KUBE_NAMESPACE}
                     """
                 }
             }
@@ -108,16 +106,12 @@ pipeline {
                 kubectl get svc -n ${KUBE_NAMESPACE}
                 Write-Output '=================================='
                 Write-Output 'Access your application at:'
-                minikube service flask-k8s-service --url -n ${KUBE_NAMESPACE}
+                minikube service flask-service --url -n ${KUBE_NAMESPACE}
                 Write-Output '=================================='
             """
         }
         failure {
             echo "[FAILURE] Pipeline failed!"
-            powershell """
-                Write-Output 'Checking minikube status...'
-                minikube status
-            """
         }
     }
 }
