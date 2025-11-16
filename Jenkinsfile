@@ -19,13 +19,13 @@ pipeline {
             steps {
                 powershell """
                     Write-Output 'Building Docker image...'
-                    # Configure minikube Docker env
-                    & minikube -p minikube docker-env | Invoke-Expression
+                    # Configure minikube Docker env for PowerShell
+                    minikube -p minikube docker-env --shell powershell | Invoke-Expression
                     # Build and tag image
                     docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                     docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
                     # List images
-                    docker images
+                    docker images | Select-String ${IMAGE_NAME}
                 """
             }
         }
@@ -34,10 +34,19 @@ pipeline {
             steps {
                 powershell """
                     Write-Output 'Updating Kubernetes manifests...'
-                    (Get-Content kubernetes\\deployment.yaml) -replace 'image: ${IMAGE_NAME}:.*', 'image: ${IMAGE_NAME}:${IMAGE_TAG}' | Set-Content kubernetes\\deployment.yaml
+                    \$content = Get-Content kubernetes\\deployment.yaml -Raw
+                    \$content = \$content -replace 'image: ${IMAGE_NAME}:.*', 'image: ${IMAGE_NAME}:${IMAGE_TAG}'
+                    \$content | Set-Content kubernetes\\deployment.yaml
+                    
+                    # Ensure imagePullPolicy is set to Never
                     if (-not (Select-String -Path kubernetes\\deployment.yaml -Pattern 'imagePullPolicy: Never')) {
-                        (Get-Content kubernetes\\deployment.yaml) + '        imagePullPolicy: Never' | Set-Content kubernetes\\deployment.yaml        
+                        \$content = Get-Content kubernetes\\deployment.yaml -Raw
+                        \$content = \$content -replace '(image: ${IMAGE_NAME}:${IMAGE_TAG})', '\$1`n        imagePullPolicy: Never'
+                        \$content | Set-Content kubernetes\\deployment.yaml
                     }
+                    
+                    Write-Output 'Updated deployment.yaml:'
+                    Get-Content kubernetes\\deployment.yaml
                 """
             }
         }
@@ -68,15 +77,31 @@ pipeline {
     post {
         always {
             echo "Pipeline finished at ${new Date()}"
-            powershell "kubectl logs -l app=flask-k8s-app -n ${KUBE_NAMESPACE} --tail=50 || Write-Output 'No logs available'"
+            powershell """
+                try {
+                    kubectl logs -l app=flask-k8s-app -n ${KUBE_NAMESPACE} --tail=50 2>`$null
+                } catch {
+                    Write-Output 'No logs available yet'
+                }
+            """
         }
         success {
             echo "[SUCCESS] Deployment successful!"
+            powershell """
+                Write-Output '=================================='
+                Write-Output 'Deployment Summary:'
+                kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-k8s-app
+                kubectl get svc -n ${KUBE_NAMESPACE}
+                Write-Output '=================================='
+            """
         }
         failure {
             echo "[FAILURE] Pipeline failed. Check above logs."
             powershell """
+                Write-Output 'Recent Kubernetes Events:'
                 kubectl get events -n ${KUBE_NAMESPACE} --sort-by='.lastTimestamp' | Select-Object -Last 20
+                Write-Output '=================================='
+                Write-Output 'Pod Status:'
                 kubectl get pods -n ${KUBE_NAMESPACE} -o wide
             """
         }
