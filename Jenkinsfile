@@ -45,15 +45,34 @@ pipeline {
                     echo "Loading image into Minikube..."
                     powershell """
                         Write-Output 'Loading image ${IMAGE_NAME}:${IMAGE_TAG} into Minikube...'
-                        minikube image load ${IMAGE_NAME}:${IMAGE_TAG}
+                        \$result1 = minikube image load ${IMAGE_NAME}:${IMAGE_TAG} 2>&1
+                        Write-Output \$result1
                         
+                        Write-Output ''
                         Write-Output 'Loading image ${IMAGE_NAME}:latest into Minikube...'
-                        minikube image load ${IMAGE_NAME}:latest
+                        \$result2 = minikube image load ${IMAGE_NAME}:latest 2>&1
+                        Write-Output \$result2
                         
-                        Write-Output 'Verifying images with minikube image ls...'
-                        minikube image ls | Select-String ${IMAGE_NAME}
+                        Write-Output ''
+                        Write-Output 'Waiting for images to be available...'
+                        Start-Sleep -Seconds 5
                         
-                        Write-Output 'Images loaded successfully!'
+                        Write-Output ''
+                        Write-Output 'Verifying images are in minikube registry...'
+                        \$images = minikube image ls 2>&1 | Select-String '${IMAGE_NAME}'
+                        
+                        if (\$images) {
+                            Write-Output 'Found images:'
+                            Write-Output \$images
+                        } else {
+                            Write-Error 'ERROR: Images not found in minikube registry!'
+                            Write-Output 'Attempting to list all images in minikube:'
+                            minikube image ls
+                            exit 1
+                        }
+                        
+                        Write-Output ''
+                        Write-Output 'Images loaded and verified successfully!'
                     """
                 }
             }
@@ -118,43 +137,3 @@ pipeline {
                 Write-Output '========================================='
                 Write-Output ''
                 Write-Output 'Pods:'
-                kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o wide
-                Write-Output ''
-                Write-Output 'Services:'
-                kubectl get svc -n ${KUBE_NAMESPACE}
-                Write-Output ''
-                Write-Output 'Access your application at:'
-                minikube service flask-service --url -n ${KUBE_NAMESPACE}
-                Write-Output ''
-                Write-Output '========================================='
-            """
-        }
-        failure {
-            echo "[FAILURE] Pipeline failed!"
-            powershell """
-                Write-Output '========================================='
-                Write-Output '    DEPLOYMENT FAILED - DEBUGGING INFO'
-                Write-Output '========================================='
-                Write-Output ''
-                Write-Output 'Pod Status:'
-                kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o wide 2>&1 | Out-String
-                Write-Output ''
-                Write-Output 'Recent Events:'
-                kubectl get events -n ${KUBE_NAMESPACE} --sort-by=.lastTimestamp 2>&1 | Select-Object -Last 10
-                Write-Output ''
-                Write-Output 'Pod Descriptions:'
-                \$pods = kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o jsonpath='{.items[*].metadata.name}' 2>&1
-                if (\$pods -and \$pods -notmatch 'error') {
-                    foreach (\$pod in \$pods.Split()) {
-                        if (\$pod) {
-                            Write-Output "--- Pod: \$pod ---"
-                            kubectl describe pod \$pod -n ${KUBE_NAMESPACE} 2>&1 | Select-Object -Last 20
-                        }
-                    }
-                }
-                Write-Output ''
-                Write-Output '========================================='
-            """
-        }
-    }
-}
