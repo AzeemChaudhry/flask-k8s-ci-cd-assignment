@@ -64,8 +64,10 @@ pipeline {
                         kubectl apply -f kubernetes/
                         
                         Write-Output 'Updating deployment image...'
-                        kubectl set image deployment/flask-deployment flask-k8s-app=${IMAGE_NAME}:${IMAGE_TAG} -n ${KUBE_NAMESPACE}
-                        kubectl patch deployment flask-deployment -n ${KUBE_NAMESPACE} -p '{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"flask-k8s-app\",\"imagePullPolicy\":\"Never\"}]}}}}'
+                        kubectl set image deployment/flask-deployment flask-container=${IMAGE_NAME}:${IMAGE_TAG} -n ${KUBE_NAMESPACE}
+                        
+                        Write-Output 'Setting imagePullPolicy to Never...'
+                        kubectl patch deployment flask-deployment -n ${KUBE_NAMESPACE} --type='json' -p='[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/imagePullPolicy\",\"value\":\"Never\"}]'
                     """
                 }
             }
@@ -80,7 +82,7 @@ pipeline {
                         kubectl rollout status deployment/flask-deployment -n ${KUBE_NAMESPACE} --timeout=5m
                         
                         Write-Output 'Current pods:'
-                        kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-k8s-app -o wide
+                        kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o wide
                         
                         Write-Output 'Current services:'
                         kubectl get svc -n ${KUBE_NAMESPACE}
@@ -102,7 +104,7 @@ pipeline {
             powershell """
                 Write-Output '=================================='
                 Write-Output 'Final Deployment Status:'
-                kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-k8s-app -o wide
+                kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o wide
                 kubectl get svc -n ${KUBE_NAMESPACE}
                 Write-Output '=================================='
                 Write-Output 'Access your application at:'
