@@ -76,11 +76,12 @@ pipeline {
     
     post {
         always {
-            echo "Pipeline finished at ${new Date()}"
+            echo "Pipeline finished"
             powershell """
-                try {
-                    kubectl logs -l app=flask-k8s-app -n ${KUBE_NAMESPACE} --tail=50 2>`$null
-                } catch {
+                \$logs = kubectl logs -l app=flask-k8s-app -n ${KUBE_NAMESPACE} --tail=50 2>&1
+                if (\$LASTEXITCODE -eq 0) {
+                    Write-Output \$logs
+                } else {
                     Write-Output 'No logs available yet'
                 }
             """
