@@ -5,9 +5,27 @@ pipeline {
         IMAGE_NAME = "flask-k8s-app"
         IMAGE_TAG = "${BUILD_NUMBER}"
         KUBE_NAMESPACE = "default"
+        KUBECONFIG = "C:\\Users\\Azeem\\.kube\\config"  // Add this line
     }
     
     stages {
+        stage('Verify Kubernetes Connection') {
+            steps {
+                script {
+                    echo "Verifying Kubernetes connection..."
+                    powershell """
+                        Write-Output "Using KUBECONFIG: ${env:KUBECONFIG}"
+                        
+                        Write-Output 'Testing connection:'
+                        kubectl get nodes
+                        
+                        Write-Output 'Cluster info:'
+                        kubectl cluster-info
+                    """
+                }
+            }
+        }
+        
         stage('Build Docker Image') {
             steps {
                 script {
@@ -80,16 +98,6 @@ pipeline {
     post {
         always {
             echo "Pipeline finished at ${new Date()}"
-            powershell """
-                Write-Output 'Attempting to get application logs...'
-                \$ErrorActionPreference = 'SilentlyContinue'
-                \$pods = kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-k8s-app -o jsonpath='{.items[0].metadata.name}'
-                if (\$pods) {
-                    kubectl logs \$pods -n ${KUBE_NAMESPACE} --tail=50
-                } else {
-                    Write-Output 'No pods available yet'
-                }
-            """
         }
         success {
             echo "[SUCCESS] Deployment successful!"
@@ -107,26 +115,8 @@ pipeline {
         failure {
             echo "[FAILURE] Pipeline failed!"
             powershell """
-                Write-Output 'Minikube Status:'
+                Write-Output 'Checking minikube status...'
                 minikube status
-                
-                Write-Output ''
-                Write-Output 'Recent Events:'
-                kubectl get events -n ${KUBE_NAMESPACE} --sort-by=.lastTimestamp 2>&1 | Select-Object -Last 15
-                
-                Write-Output ''
-                Write-Output 'All Pods:'
-                kubectl get pods -n ${KUBE_NAMESPACE} -o wide 2>&1
-                
-                Write-Output ''
-                Write-Output 'Pod Details (if any):'
-                \$pods = kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-k8s-app -o jsonpath='{.items[*].metadata.name}' 2>&1
-                if (\$pods -and \$pods -notmatch 'error') {
-                    foreach (\$pod in \$pods.Split()) {
-                        Write-Output "Describing pod: \$pod"
-                        kubectl describe pod \$pod -n ${KUBE_NAMESPACE}
-                    }
-                }
             """
         }
     }
