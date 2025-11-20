@@ -15,6 +15,13 @@ pipeline {
                     echo "Verifying Kubernetes connection..."
                     powershell """
                         Write-Output "Using KUBECONFIG: ${env:KUBECONFIG}"
+                        Write-Output 'Checking Minikube status...'
+                        \$status = minikube status --format='{{.Host}}'
+                        if (\$status -ne 'Running') {
+                            Write-Output 'Minikube is not running. Starting Minikube...'
+                            minikube start
+                            Start-Sleep -Seconds 10
+                        }
                         Write-Output 'Testing connection:'
                         kubectl get nodes
                     """
@@ -28,35 +35,15 @@ pipeline {
                     echo "Building Docker image ${IMAGE_NAME}:${IMAGE_TAG}..."
                     
                     powershell """
-                        Write-Output 'Building Docker image...'
+                        Write-Output 'Setting Docker environment to use Minikube...'
+                        & minikube -p minikube docker-env --shell powershell | Invoke-Expression
+                        
+                        Write-Output 'Building Docker image inside Minikube...'
                         docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                         docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
                         
                         Write-Output 'Listing built images:'
                         docker images | Select-String ${IMAGE_NAME}
-                    """
-                }
-            }
-        }
-        
-        stage('Load Image to Minikube') {
-            steps {
-                script {
-                    echo "Loading image into Minikube..."
-                    powershell """
-                        Write-Output 'Loading image ${IMAGE_NAME}:${IMAGE_TAG} into Minikube...'
-                        minikube image load ${IMAGE_NAME}:${IMAGE_TAG}
-                        
-                        Write-Output 'Loading image ${IMAGE_NAME}:latest into Minikube...'
-                        minikube image load ${IMAGE_NAME}:latest
-                        
-                        Write-Output 'Waiting for images to be available...'
-                        Start-Sleep -Seconds 5
-                        
-                        Write-Output 'Verifying images are in minikube registry...'
-                        minikube image ls | Select-String ${IMAGE_NAME}
-                        
-                        Write-Output 'Images loaded successfully!'
                     """
                 }
             }
@@ -72,6 +59,9 @@ pipeline {
                         
                         Write-Output 'Updating deployment image to ${IMAGE_NAME}:${IMAGE_TAG}...'
                         kubectl set image deployment/flask-deployment flask-container=${IMAGE_NAME}:${IMAGE_TAG} -n ${KUBE_NAMESPACE}
+                        
+                        Write-Output 'Patching deployment to use IfNotPresent pull policy...'
+                        kubectl patch deployment flask-deployment -n ${KUBE_NAMESPACE} -p '{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"flask-container\",\"imagePullPolicy\":\"IfNotPresent\"}]}}}}'
                         
                         Write-Output 'Deployment updated successfully!'
                     """
