@@ -84,8 +84,8 @@ pipeline {
         }
         
         stage('Verify Deployment') {
-            retry(2) {
-                steps {
+            steps {
+                retry(2) {
                     script {
                         echo "Verifying deployment (with retry)..."
                         powershell """
@@ -104,8 +104,8 @@ pipeline {
         }
         
         stage('Health Check') {
-            retry(2) {
-                steps {
+            steps {
+                retry(2) {
                     script {
                         echo "Performing health check (with retry)..."
                         powershell """
