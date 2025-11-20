@@ -53,7 +53,7 @@ Used for:
 
 ### Load Balancing
 
-Kubernetes Services distribute traffic across all replicas automatically.
+Kubernetes Services distribute traffic across all replicas automatically
 
 ### Horizontal Scaling
 
