@@ -14,6 +14,7 @@ pipeline {
                 script {
                     echo "Verifying Kubernetes connection..."
                     powershell """
+                        Write-Output "Using KUBECONFIG: ${env:KUBECONFIG}"
                         Write-Output 'Testing connection:'
                         kubectl get nodes
                     """
@@ -21,45 +22,41 @@ pipeline {
             }
         }
         
-        stage('Build Docker Image in Minikube') {
+        stage('Build Docker Image') {
             steps {
                 script {
-                    echo "Building Docker image ${IMAGE_NAME}:${IMAGE_TAG} directly in Minikube..."
+                    echo "Building Docker image ${IMAGE_NAME}:${IMAGE_TAG}..."
                     
                     powershell """
-                        Write-Output 'Setting Minikube Docker environment...'
-                        & minikube -p minikube docker-env --shell powershell | Invoke-Expression
-                        
-                        Write-Output 'Building Docker image in Minikube Docker daemon...'
+                        Write-Output 'Building Docker image...'
                         docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                         docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
                         
-                        Write-Output 'Verifying images in Minikube:'
-                        docker images | Select-String ${IMAGE_NAME} | Select-Object -First 3
+                        Write-Output 'Listing built images:'
+                        docker images | Select-String ${IMAGE_NAME}
                     """
                 }
             }
         }
         
-        stage('Update Kubernetes Manifests') {
+        stage('Load Image to Minikube') {
             steps {
                 script {
-                    echo "Updating Kubernetes deployment manifests..."
+                    echo "Loading image into Minikube..."
                     powershell """
-                        \$deploymentFile = "kubernetes/deployment.yaml"
+                        Write-Output 'Loading image ${IMAGE_NAME}:${IMAGE_TAG} into Minikube...'
+                        minikube image load ${IMAGE_NAME}:${IMAGE_TAG}
                         
-                        if (Test-Path \$deploymentFile) {
-                            \$content = Get-Content \$deploymentFile -Raw
-                            
-                            # Update imagePullPolicy to Never if not already set
-                            if (\$content -notmatch 'imagePullPolicy:\\s*Never') {
-                                \$content = \$content -replace '(image:\\s*${IMAGE_NAME}:.*)', '\$1`n        imagePullPolicy: Never'
-                                Set-Content \$deploymentFile \$content
-                                Write-Output 'Updated imagePullPolicy to Never'
-                            } else {
-                                Write-Output 'imagePullPolicy already set to Never'
-                            }
-                        }
+                        Write-Output 'Loading image ${IMAGE_NAME}:latest into Minikube...'
+                        minikube image load ${IMAGE_NAME}:latest
+                        
+                        Write-Output 'Waiting for images to be available...'
+                        Start-Sleep -Seconds 5
+                        
+                        Write-Output 'Verifying images are in minikube registry...'
+                        minikube image ls | Select-String ${IMAGE_NAME}
+                        
+                        Write-Output 'Images loaded successfully!'
                     """
                 }
             }
@@ -73,11 +70,10 @@ pipeline {
                         Write-Output 'Applying Kubernetes manifests...'
                         kubectl apply -f kubernetes/
                         
-                        Write-Output 'Updating deployment image...'
+                        Write-Output 'Updating deployment image to ${IMAGE_NAME}:${IMAGE_TAG}...'
                         kubectl set image deployment/flask-deployment flask-container=${IMAGE_NAME}:${IMAGE_TAG} -n ${KUBE_NAMESPACE}
                         
-                        Write-Output 'Patching deployment to use imagePullPolicy: Never...'
-                        kubectl patch deployment flask-deployment -n ${KUBE_NAMESPACE} -p '{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"flask-container\",\"imagePullPolicy\":\"Never\"}]}}}}'
+                        Write-Output 'Deployment updated successfully!'
                     """
                 }
             }
@@ -85,82 +81,47 @@ pipeline {
         
         stage('Verify Deployment') {
             steps {
-                retry(2) {
-                    script {
-                        echo "Verifying deployment (with retry)..."
-                        powershell """
-                            Write-Output 'Waiting for deployment rollout...'
-                            kubectl rollout status deployment/flask-deployment -n ${KUBE_NAMESPACE} --timeout=3m
-                            
-                            Write-Output 'Checking pod status...'
-                            kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app
-                            
-                            Write-Output 'Checking services...'
-                            kubectl get svc -n ${KUBE_NAMESPACE}
-                        """
-                    }
-                }
-            }
-        }
-        
-        stage('Health Check') {
-            steps {
-                retry(2) {
-                    script {
-                        echo "Performing health check (with retry)..."
-                        powershell """
-                            Write-Output 'Verifying all pods are running...'
-                            \$pods = kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o jsonpath='{.items[*].status.phase}'
-                            
-                            if (\$pods -match 'Running') {
-                                Write-Output 'All pods are running successfully!'
-                            } else {
-                                Write-Output 'Some pods are not running. Current status:'
-                                kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app
-                                kubectl describe pods -n ${KUBE_NAMESPACE} -l app=flask-app
-                                exit 1
-                            }
-                        """
-                    }
+                script {
+                    echo "Verifying deployment..."
+                    powershell """
+                        Write-Output 'Waiting for deployment rollout to complete...'
+                        kubectl rollout status deployment/flask-deployment -n ${KUBE_NAMESPACE} --timeout=5m
+                        
+                        Write-Output 'Current pods:'
+                        kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o wide
+                        
+                        Write-Output 'Current services:'
+                        kubectl get svc -n ${KUBE_NAMESPACE}
+                        
+                        Write-Output 'Getting service URL...'
+                        minikube service flask-service --url -n ${KUBE_NAMESPACE}
+                    """
                 }
             }
         }
     }
     
     post {
+        always {
+            echo "Pipeline finished at ${new Date()}"
+        }
         success {
-            echo "[SUCCESS] Deployment completed!"
+            echo "[SUCCESS] Deployment completed successfully!"
             powershell """
-                Write-Output 'Final pod status:'
-                kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app
-                
-                Write-Output ''
-                Write-Output 'Service URL:'
+                Write-Output '========================================='
+                Write-Output '    DEPLOYMENT SUCCESSFUL!'
+                Write-Output '========================================='
+                Write-Output 'Pods:'
+                kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o wide
+                Write-Output 'Services:'
+                kubectl get svc -n ${KUBE_NAMESPACE}
+                Write-Output 'Access your application at:'
                 minikube service flask-service --url -n ${KUBE_NAMESPACE}
+                Write-Output '========================================='
             """
         }
         failure {
             echo "[FAILURE] Pipeline failed!"
-            powershell """
-                Write-Output 'Debug information:'
-                Write-Output '=================='
-                Write-Output ''
-                Write-Output 'Pod Status:'
-                kubectl get pods -n ${KUBE_NAMESPACE}
-                Write-Output ''
-                Write-Output 'Pod Details:'
-                kubectl describe pods -n ${KUBE_NAMESPACE} -l app=flask-app
-                Write-Output ''
-                Write-Output 'Pod Logs:'
-                kubectl logs -n ${KUBE_NAMESPACE} -l app=flask-app --tail=50
-                Write-Output ''
-                Write-Output 'Images in Minikube:'
-                & minikube -p minikube docker-env --shell powershell | Invoke-Expression
-                docker images | Select-String ${IMAGE_NAME}
-            """
-        }
-        always {
-            echo "Pipeline execution completed at \${new Date()}"
         }
     }
 }
