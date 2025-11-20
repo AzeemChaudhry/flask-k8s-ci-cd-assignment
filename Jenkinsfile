@@ -14,7 +14,6 @@ pipeline {
                 script {
                     echo "Verifying Kubernetes connection..."
                     powershell """
-                        Write-Output "Using KUBECONFIG: ${env:KUBECONFIG}"
                         Write-Output 'Testing connection:'
                         kubectl get nodes
                     """
@@ -31,9 +30,7 @@ pipeline {
                         Write-Output 'Building Docker image...'
                         docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                         docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
-                        
-                        Write-Output 'Listing built images:'
-                        docker images | Select-String ${IMAGE_NAME}
+                        docker images | Select-String ${IMAGE_NAME} | Select-Object -First 3
                     """
                 }
             }
@@ -42,21 +39,16 @@ pipeline {
         stage('Load Image to Minikube') {
             steps {
                 script {
-                    echo "Loading image into Minikube..."
+                    echo "Loading images into Minikube..."
                     powershell """
-                        Write-Output 'Loading image ${IMAGE_NAME}:${IMAGE_TAG} into Minikube...'
-                        minikube image load ${IMAGE_NAME}:${IMAGE_TAG}
+                        Write-Output 'Loading ${IMAGE_NAME}:${IMAGE_TAG}...'
+                        minikube image load ${IMAGE_NAME}:${IMAGE_TAG} --daemon
                         
-                        Write-Output 'Loading image ${IMAGE_NAME}:latest into Minikube...'
-                        minikube image load ${IMAGE_NAME}:latest
+                        Write-Output 'Loading ${IMAGE_NAME}:latest...'
+                        minikube image load ${IMAGE_NAME}:latest --daemon
                         
-                        Write-Output 'Waiting for images to be available...'
-                        Start-Sleep -Seconds 5
-                        
-                        Write-Output 'Verifying images are in minikube registry...'
-                        minikube image ls | Select-String ${IMAGE_NAME}
-                        
-                        Write-Output 'Images loaded successfully!'
+                        Start-Sleep -Seconds 3
+                        Write-Output 'Images loaded!'
                     """
                 }
             }
@@ -67,13 +59,8 @@ pipeline {
                 script {
                     echo "Deploying to Kubernetes..."
                     powershell """
-                        Write-Output 'Applying Kubernetes manifests...'
                         kubectl apply -f kubernetes/
-                        
-                        Write-Output 'Updating deployment image to ${IMAGE_NAME}:${IMAGE_TAG}...'
                         kubectl set image deployment/flask-deployment flask-container=${IMAGE_NAME}:${IMAGE_TAG} -n ${KUBE_NAMESPACE}
-                        
-                        Write-Output 'Deployment updated successfully!'
                     """
                 }
             }
@@ -84,17 +71,9 @@ pipeline {
                 script {
                     echo "Verifying deployment..."
                     powershell """
-                        Write-Output 'Waiting for deployment rollout to complete...'
                         kubectl rollout status deployment/flask-deployment -n ${KUBE_NAMESPACE} --timeout=5m
-                        
-                        Write-Output 'Current pods:'
-                        kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o wide
-                        
-                        Write-Output 'Current services:'
+                        kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app
                         kubectl get svc -n ${KUBE_NAMESPACE}
-                        
-                        Write-Output 'Getting service URL...'
-                        minikube service flask-service --url -n ${KUBE_NAMESPACE}
                     """
                 }
             }
@@ -102,22 +81,11 @@ pipeline {
     }
     
     post {
-        always {
-            echo "Pipeline finished at ${new Date()}"
-        }
         success {
-            echo "[SUCCESS] Deployment completed successfully!"
+            echo "[SUCCESS] Deployment completed!"
             powershell """
-                Write-Output '========================================='
-                Write-Output '    DEPLOYMENT SUCCESSFUL!'
-                Write-Output '========================================='
-                Write-Output 'Pods:'
-                kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app -o wide
-                Write-Output 'Services:'
-                kubectl get svc -n ${KUBE_NAMESPACE}
-                Write-Output 'Access your application at:'
+                kubectl get pods -n ${KUBE_NAMESPACE} -l app=flask-app
                 minikube service flask-service --url -n ${KUBE_NAMESPACE}
-                Write-Output '========================================='
             """
         }
         failure {
